@@ -1,24 +1,9 @@
 // Exercise 09 — RGB Color Mixer
 //
-// One RGB LED wired as:
-//    R  → GPIO 4   → LEDC channel 0
-//    G  → GPIO 5   → LEDC channel 1
-//    B  → GPIO 18  → LEDC channel 2
-//    COM → GND (common-cathode: driving a channel HIGH lights it)
-//
-// Cycles through the palette every 2 s:  Red → Green → Blue → Yellow (R+G)
-// → Cyan (G+B) → White (R+G+B), then loops.
-//
-// ─── APPROACH ───────────────────────────────────────────────────────────────
-//
-// Each color needs its OWN PWM channel — you can't drive three colors from
-// one channel because they'd all fade together. So the ESP32's LEDC lets us
-// allocate three independent channels, one per pin. Then `ledcWrite(ch,
-// duty)` sets each color's brightness independently — pure additive color
-// mixing.
-//
-// Palette is a plain array of {r, g, b, name}. Adding a color = one line.
-// Cycling uses `millis()`-based non-blocking timing.
+// Cycles Red → Green → Blue → Yellow (R+G) → Cyan (G+B) → White, 2 s each.
+// Each channel has its own LEDC — that's what lets us mix colors (drive
+// several channels at once at any duty).
+// Wiring: R → GPIO 4, G → GPIO 5, B → GPIO 18 (LEDC ch 0/1/2), COM → GND.
 
 #include <Arduino.h>
 
@@ -27,12 +12,12 @@ const RgbChannel R = { 4,  0 };
 const RgbChannel G = { 5,  1 };
 const RgbChannel B = { 18, 2 };
 
-const int LEDC_FREQ_HZ    = 5000;
-const int LEDC_RESOLUTION = 8;
+const int LEDC_FREQ_HZ    = 5000;    // PWM carrier — above eye flicker
+const int LEDC_RESOLUTION = 8;       // 8 bits → duty 0..255
 
 struct Color { int r, g, b; const char* name; };
 
-const Color palette[] = {
+const Color palette[] = {                                  // add a color = one line
     { 255,   0,   0, "Red" },
     {   0, 255,   0, "Green" },
     {   0,   0, 255, "Blue" },
@@ -42,7 +27,7 @@ const Color palette[] = {
 };
 const int NUM_COLORS = sizeof(palette) / sizeof(palette[0]);
 
-const unsigned long COLOR_MS = 2000;
+const unsigned long COLOR_MS = 2000;                       // dwell per color
 
 void setupChannel(const RgbChannel &ch) {
     ledcSetup(ch.channel, LEDC_FREQ_HZ, LEDC_RESOLUTION);
@@ -61,14 +46,14 @@ void setup() {
     setupChannel(R);
     setupChannel(G);
     setupChannel(B);
-    showColor(palette[0]);
+    showColor(palette[0]);                                 // start on first color, no wait
 }
 
 void loop() {
-    static unsigned long lastChange = millis();
+    static unsigned long lastChange = millis();            // set once, retained across loop() calls
     static int idx = 0;
 
-    if (millis() - lastChange >= COLOR_MS) {
+    if (millis() - lastChange >= COLOR_MS) {               // dwell elapsed?
         idx = (idx + 1) % NUM_COLORS;
         showColor(palette[idx]);
         lastChange = millis();
