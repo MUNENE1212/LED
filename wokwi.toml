@@ -1,4 +1,4 @@
 [wokwi]
 version = 1
-firmware = '.pio/build/08_breathing_led/firmware.bin'
-elf = '.pio/build/08_breathing_led/firmware.elf'
+firmware = '.pio/build/08_three_phase/firmware.bin'
+elf = '.pio/build/08_three_phase/firmware.elf'
