@@ -184,9 +184,11 @@ void multiplexStep(unsigned long now) {
     digitalWrite(DIGIT_PINS[currentDigit], LOW);           // enable ONLY this digit (LOW = on)
 }
 
-// ─── Colon: 1 Hz blink in run, solid in setup ──────────────────────────────
+// ─── Colon: short 100 ms tick each second in run, solid in setup ───────────
 void updateColon(unsigned long now) {
-    bool on = (mode == RUN) ? ((now % 1000) < 500) : true; // 50 % duty in run, always in setup
+    const unsigned long TICK_ON_MS = 100;                  // pulse width — feel of a mechanical tick
+    bool on = (mode == RUN) ? ((now % 1000) < TICK_ON_MS)  // 10 % duty at 1 Hz
+                            : true;                        // solid in setup
     digitalWrite(COLON_PIN, on ? HIGH : LOW);
 }
 
