@@ -5,23 +5,53 @@
   "parts": [
     { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 0, "left": -4.76, "attrs": {} },
 
-    { "type": "wokwi-rgb-led",  "id": "rgb1",   "top": 300, "left": 350, "attrs": { "common": "cathode" } },
-    { "type": "wokwi-resistor", "id": "r_r",    "top": 250, "left": 150, "attrs": { "value": "220" } },
-    { "type": "wokwi-resistor", "id": "r_g",    "top": 320, "left": 150, "attrs": { "value": "220" } },
-    { "type": "wokwi-resistor", "id": "r_b",    "top": 390, "left": 150, "attrs": { "value": "220" } },
-    { "type": "wokwi-gnd",      "id": "gnd_rgb","top": 470, "left": 400, "attrs": {} }
+    { "type": "wokwi-resistor", "id": "r_r", "top": 200, "left": 124.8, "attrs": { "value": "220" } },
+    {
+      "type": "wokwi-led",
+      "id": "led_r",
+      "top": 205,
+      "left": 313.8,
+      "rotate": 90,
+      "attrs": { "color": "red", "flip": "1", "label": "R" }
+    },
+
+    { "type": "wokwi-resistor", "id": "r_g", "top": 300, "left": 124.8, "attrs": { "value": "220" } },
+    {
+      "type": "wokwi-led",
+      "id": "led_g",
+      "top": 305,
+      "left": 313.8,
+      "rotate": 90,
+      "attrs": { "color": "green", "flip": "1", "label": "G" }
+    },
+
+    { "type": "wokwi-resistor", "id": "r_b", "top": 400, "left": 124.8, "attrs": { "value": "220" } },
+    {
+      "type": "wokwi-led",
+      "id": "led_b",
+      "top": 405,
+      "left": 313.8,
+      "rotate": 90,
+      "attrs": { "color": "blue", "flip": "1", "label": "B" }
+    },
+
+    { "type": "wokwi-gnd", "id": "gnd", "top": 520, "left": 306.6, "attrs": {} }
   ],
   "connections": [
     [ "esp:TX", "$serialMonitor:RX", "", [] ],
     [ "esp:RX", "$serialMonitor:TX", "", [] ],
 
-    [ "esp:4",  "r_r:1",   "red",   [] ],
-    [ "r_r:2",  "rgb1:R",  "red",   [] ],
-    [ "esp:5",  "r_g:1",   "green", [] ],
-    [ "r_g:2",  "rgb1:G",  "green", [] ],
-    [ "esp:18", "r_b:1",   "blue",  [] ],
-    [ "r_b:2",  "rgb1:B",  "blue",  [] ],
-    [ "rgb1:COMMON", "gnd_rgb:GND", "black", [] ]
+    [ "esp:4",  "r_r:1",  "red",   [] ],
+    [ "r_r:2",  "led_r:A", "red",  [] ],
+    [ "led_r:C", "gnd:GND", "black", [] ],
+
+    [ "esp:5",  "r_g:1",  "green", [] ],
+    [ "r_g:2",  "led_g:A", "green", [] ],
+    [ "led_g:C", "gnd:GND", "black", [] ],
+
+    [ "esp:18", "r_b:1",  "blue",  [] ],
+    [ "r_b:2",  "led_b:A", "blue",  [] ],
+    [ "led_b:C", "gnd:GND", "black", [] ]
   ],
   "dependencies": {}
 }
