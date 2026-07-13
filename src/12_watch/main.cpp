@@ -184,11 +184,15 @@ void multiplexStep(unsigned long now) {
     digitalWrite(DIGIT_PINS[currentDigit], LOW);           // enable ONLY this digit (LOW = on)
 }
 
-// ─── Colon: short 100 ms tick each second in run, solid in setup ───────────
+// ─── Colon: short 100 ms tick at each real second boundary, solid in setup ─
 void updateColon(unsigned long now) {
-    const unsigned long TICK_ON_MS = 100;                  // pulse width — feel of a mechanical tick
-    bool on = (mode == RUN) ? ((now % 1000) < TICK_ON_MS)  // 10 % duty at 1 Hz
-                            : true;                        // solid in setup
+    const unsigned long TICK_ON_MS = 100;                  // pulse width — mechanical-tick feel
+    unsigned long secPhase = (now - millisAtSet) % 1000;   // ms into the current second
+    bool on = (mode == RUN) ? (secPhase < TICK_ON_MS)      // pulse at the second boundary…
+                            : true;                        // …anchored to the SAME clock that
+                                                           //   drives HH:MM (millisAtSet), so
+                                                           //   the tick and the seconds count
+                                                           //   change at the exact same instant.
     digitalWrite(COLON_PIN, on ? HIGH : LOW);
 }
 
