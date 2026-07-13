@@ -1,32 +1,9 @@
 // Exercise 10 — Temperature Indicator
 //
-// Same RGB LED wiring as Ex 09:  R → GPIO 4, G → GPIO 5, B → GPIO 18.
-//
-// Bands:
-//    <  20 °C  →  Blue           (cold)
-//    20–25 °C  →  Green          (comfortable)
-//    25–30 °C  →  Yellow         (warm)
-//    >  30 °C  →  Red + flash    (hot!)
-//
-// No sensor in this exercise — we cycle through a set of TEST_TEMPS every
-// 3 s so every band gets exercised.
-//
-// ─── APPROACH ───────────────────────────────────────────────────────────────
-//
-// Two ideas worth naming:
-//
-// 1) CLASSIFY-THEN-RENDER.
-//    `bandOf(temp)` turns a float into an enum (COLD / COMFORTABLE / WARM /
-//    HOT). `showBand(band, now)` turns that enum into an RGB output. Keeping
-//    the two responsibilities apart makes each easy to change: swap in a
-//    real thermistor read for the test-value cycle, and `bandOf()` still
-//    works untouched.
-//
-// 2) NON-BLOCKING FLASH FOR THE HOT STATE.
-//    "Flash" is easy to get wrong: a naive `digitalWrite/delay/digitalWrite/
-//    delay` loop freezes everything else. Instead we derive the flash state
-//    from `millis() % 500 < 250` — a 2 Hz square wave, 50 % duty, that
-//    responds instantly to the temperature dropping out of the hot band.
+// RGB LED shows a "temperature" band:
+//   < 20 °C → Blue   20–25 → Green   25–30 → Yellow   > 30 → Red + flash
+// No sensor — TEST_TEMPS cycle every 3 s so every band gets exercised.
+// Wiring: R → GPIO 4, G → GPIO 5, B → GPIO 18 (LEDC ch 0/1/2), COM → GND.
 
 #include <Arduino.h>
 
@@ -35,18 +12,17 @@ const RgbChannel R = { 4,  0 };
 const RgbChannel G = { 5,  1 };
 const RgbChannel B = { 18, 2 };
 
-const int LEDC_FREQ_HZ    = 5000;
-const int LEDC_RESOLUTION = 8;
+const int LEDC_FREQ_HZ    = 5000;    // PWM carrier — above eye flicker
+const int LEDC_RESOLUTION = 8;       // 8 bits → duty 0..255
 
 enum Band { COLD, COMFORTABLE, WARM, HOT };
 const char* bandName[] = { "COLD", "COMFORTABLE", "WARM", "HOT" };
 
-// Rotate through these every TEST_MS so every band gets shown.
-const float TEST_TEMPS[]     = { 15.0, 22.0, 27.0, 32.0 };
+const float TEST_TEMPS[]     = { 15.0, 22.0, 27.0, 32.0 };           // one per band
 const int   NUM_TEMPS        = sizeof(TEST_TEMPS) / sizeof(TEST_TEMPS[0]);
-const unsigned long TEST_MS  = 3000;
+const unsigned long TEST_MS  = 3000;                                 // dwell per test value
 
-Band bandOf(float t) {
+Band bandOf(float t) {                                               // classify — pure fn
     if (t < 20) return COLD;
     if (t < 25) return COMFORTABLE;
     if (t < 30) return WARM;
@@ -58,19 +34,19 @@ void setupChannel(const RgbChannel &ch) {
     ledcAttachPin(ch.pin, ch.channel);
 }
 
-void writeRGB(int r, int g, int b) {
+void writeRGB(int r, int g, int b) {                                 // set 3 channels at once
     ledcWrite(R.channel, r);
     ledcWrite(G.channel, g);
     ledcWrite(B.channel, b);
 }
 
-void showBand(Band b, unsigned long now) {
+void showBand(Band b, unsigned long now) {                           // render — depends on band + time
     switch (b) {
         case COLD:        writeRGB(  0,   0, 255); break;
         case COMFORTABLE: writeRGB(  0, 255,   0); break;
         case WARM:        writeRGB(255, 255,   0); break;
         case HOT: {
-            bool on = (now % 500) < 250;         // 2 Hz, 50 % duty flash
+            bool on = (now % 500) < 250;                             // 2 Hz square, 50% duty — non-blocking flash
             writeRGB(on ? 255 : 0, 0, 0);
             break;
         }
@@ -87,15 +63,13 @@ void setup() {
 void loop() {
     unsigned long now = millis();
 
-    // Pick a test temperature based on time.
-    int   idx  = (now / TEST_MS) % NUM_TEMPS;
+    int   idx  = (now / TEST_MS) % NUM_TEMPS;                        // which test value now
     float temp = TEST_TEMPS[idx];
     Band  band = bandOf(temp);
 
     showBand(band, now);
 
-    // Log once per test-value change (only when the index actually flips).
-    static int lastIdx = -1;
+    static int lastIdx = -1;                                         // log only when the test value flips
     if (idx != lastIdx) {
         Serial.printf("test temp = %.1f °C  →  %s\n", temp, bandName[band]);
         lastIdx = idx;
