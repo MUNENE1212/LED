@@ -59,7 +59,7 @@ elf      = '.pio/build/08_three_phase/firmware.elf'
 | 08 | [three_phase](src/08_three_phase) | **Three-phase AC power simulator** — 3 LEDs 120° apart, driven by shifted sines. | Data-driven design, `millis()`-based time, `sinf`, LEDC on 3 channels. |
 | 09 | [rgb_mixer](src/09_rgb_mixer) | RGB LED cycles through the primary and secondary colors. | 3 LEDC channels, color as data. |
 | 10 | [temp_indicator](src/10_temp_indicator) | RGB LED shows a "temperature" band; flashes red when hot. | Enum bands, non-blocking flash, classify-then-render split. |
-| 11 | [smart_bulb](src/11_smart_bulb) | **Smart LED bulb** — 6 LEDs (2R+2G+2B) that cycle modes on every power-cycle. Same trick real no-app smart bulbs use. | `Preferences` / NVS persistence, commit-delay pattern, 6 PWM channels, hex-layout diagram. |
+| 11 | [smart_bulb](src/11_smart_bulb) | **Smart LED bulb** — 6 LEDs (2R+2G+2B) with a MODE button *and* NVS-persisted power-cycle mode advance. | `Preferences` / NVS persistence, commit-delay pattern, 6 PWM channels, reused `DebouncedButton`, hex-layout diagram. |
 
 ## Design principles
 

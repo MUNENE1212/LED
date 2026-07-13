@@ -19,7 +19,9 @@
     { "type": "wokwi-resistor", "id": "r4", "top": 310, "left": 130, "attrs": { "value": "220" } },
     { "type": "wokwi-resistor", "id": "r5", "top": 170, "left": 130, "attrs": { "value": "220" } },
 
-    { "type": "wokwi-gnd", "id": "gnd", "top": 600, "left": 340, "attrs": {} }
+    { "type": "wokwi-gnd", "id": "gnd", "top": 600, "left": 340, "attrs": {} },
+
+    { "type": "wokwi-pushbutton", "id": "btn_mode", "top": 620, "left": 140, "attrs": { "color": "green", "label": "MODE", "bounce": "0" } }
   ],
   "connections": [
     [ "esp:TX", "$serialMonitor:RX", "", [] ],
@@ -47,7 +49,10 @@
 
     [ "esp:21", "r5:1", "blue",  [] ],
     [ "r5:2",   "led5:A", "blue", [] ],
-    [ "led5:C", "gnd:GND", "black", [] ]
+    [ "led5:C", "gnd:GND", "black", [] ],
+
+    [ "esp:22", "btn_mode:1.l", "gray",  [] ],
+    [ "btn_mode:2.l", "gnd:GND", "black", [] ]
   ],
   "dependencies": {}
 }
