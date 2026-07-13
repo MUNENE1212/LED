@@ -1,4 +1,4 @@
 [wokwi]
 version = 1
-firmware = '.pio/build/10_temp_indicator/firmware.bin'
-elf = '.pio/build/10_temp_indicator/firmware.elf'
+firmware = '.pio/build/12_watch/firmware.bin'
+elf = '.pio/build/12_watch/firmware.elf'

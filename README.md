@@ -60,6 +60,7 @@ elf      = '.pio/build/08_three_phase/firmware.elf'
 | 09 | [rgb_mixer](src/09_rgb_mixer) | RGB LED cycles through the primary and secondary colors. | 3 LEDC channels, color as data. |
 | 10 | [temp_indicator](src/10_temp_indicator) | RGB LED shows a "temperature" band; flashes red when hot. | Enum bands, non-blocking flash, classify-then-render split. |
 | 11 | [smart_bulb](src/11_smart_bulb) | **Smart LED bulb** — 6 LEDs (2R+2G+2B). Button toggles ON↔OFF; each OFF→ON advances mode. Power-cycle also advances (NVS-persisted). | `Preferences` / NVS persistence, commit-delay pattern, 6 PWM channels, reused `DebouncedButton`, hex-layout diagram. |
+| 12 | [watch](src/12_watch) | **4-digit 7-segment digital watch** — HH:MM multiplexed display, MODE/UP/DOWN buttons, 12/24 toggle, setup mode, timezone (−12..+14). | Multiplexed display driver, short/long-press button state machine, NVS-persisted prefs, time as UTC + tz offset. |
 
 ## Design principles
 
