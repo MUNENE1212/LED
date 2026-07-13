@@ -1,45 +1,9 @@
 // Exercise 11 — Smart LED Bulb
 //
-// A multi-mode LED bulb with TWO independent controls:
-//   1) POWER-CYCLE the ESP32 — the "no-app-needed" smart-bulb trick.
-//      Works even with the button disconnected.
-//   2) THE MODE BUTTON on GPIO 22 — behaves like a real bulb switch:
-//        press when ON   → bulb goes OFF (mode NOT advanced)
-//        press when OFF  → bulb goes ON, mode ADVANCES to the next one
-//      So the tap pattern is: mode N ↔ OFF ↔ mode N+1 ↔ OFF ↔ mode N+2 …
-//      You can rest the bulb on any mode (single tap OFF) without losing
-//      your place.
-//
-// Both mechanisms share the same NVS-backed state so power-cycling still
-// advances mode from wherever the button left it. Leave the current mode
-// stable for 3 s and it locks — future power-ons stay put.
-//
-// HOW THE POWER-CYCLE TRICK WORKS
-//   NVS (Non-Volatile Storage) is a small flash region that survives power
-//   loss. We stash a "next mode" index there. Every boot:
-//     1. Read `next_mode` from NVS → run THAT mode now.
-//     2. Immediately write `next_mode + 1` back to NVS.
-//     3. After COMMIT_MS (3 s) of stable operation, overwrite NVS with the
-//        CURRENT mode → mode is "locked", future power-ons stay put.
-//   Quick off-on-off-on rotates modes. Leave it on and it settles.
-//   The button hooks into the SAME persist-then-lock cycle, so a press
-//   followed by a quick power-cycle advances from the button-selected mode.
-//
-// HARDWARE (see diagram.json)
-//   Six LEDs in a hex, interleaved R,G,B,R,G,B so patterns walking around
-//   the ring cycle color naturally.
-//     pos 0 : R → GPIO 2   ch 0
-//     pos 1 : G → GPIO 5   ch 1
-//     pos 2 : B → GPIO 19  ch 2
-//     pos 3 : R → GPIO 4   ch 3
-//     pos 4 : G → GPIO 18  ch 4
-//     pos 5 : B → GPIO 21  ch 5
-//   MODE button → GPIO 22, other terminal to GND (uses internal pull-up).
-//
-// TESTING IN WOKWI
-//   Click MODE = instant mode advance.
-//   Stop the sim = "power off", Start = "power on". Do it quickly (<3 s) to
-//   advance modes; wait longer to lock the current mode in NVS.
+// 6 LEDs (2R+2G+2B) in an interleaved R,G,B,R,G,B hex. Two controls:
+//   • MODE button (GPIO 22): press ON→OFF (mode stays) or OFF→ON (advance)
+//   • Power-cycle: also advances mode; stable 3 s locks the current one
+// Mode index persists in NVS (Preferences).
 
 #include <Arduino.h>
 #include <Preferences.h>
@@ -57,9 +21,9 @@ const Led leds[] = {
     { 18, 4, G },   // pos 4
     { 21, 5, B }    // pos 5
 };
-const int NUM_LEDS = sizeof(leds) / sizeof(leds[0]);
+const int NUM_LEDS = sizeof(leds) / sizeof(leds[0]);   // count derived from array
 
-const int LEDC_FREQ_HZ    = 5000;    // PWM carrier — invisible to the eye
+const int LEDC_FREQ_HZ    = 5000;    // PWM carrier — above eye flicker
 const int LEDC_RESOLUTION = 8;       // 8 bits → duty 0..255
 
 // ─── Modes ──────────────────────────────────────────────────────────────────
@@ -70,65 +34,64 @@ enum Mode {
     MODE_BLUE,
     MODE_BREATHING,
     MODE_RAINBOW_CHASE,
-    NUM_MODES                        // sentinel — always last, gives us count
+    NUM_MODES                        // sentinel — gives us mode count
 };
 
 const char* modeName[] = {
     "Warm White", "Cool White", "Red", "Blue", "Breathing", "Rainbow Chase"
 };
 
-// ─── Button (non-blocking debounce, pattern from Ex 07) ─────────────────────
-const int MODE_BUTTON_PIN         = 22;
-const unsigned long DEBOUNCE_MS   = 30;
+// ─── Button (non-blocking debounce, from Ex 07) ─────────────────────────────
+const int MODE_BUTTON_PIN       = 22;
+const unsigned long DEBOUNCE_MS = 30;
 
 struct DebouncedButton {
     int pin;
-    int lastReading            = HIGH;
-    int state                  = HIGH;
-    unsigned long lastChangeMs = 0;
-    DebouncedButton(int p) : pin(p) {}
+    int lastReading            = HIGH;      // raw read, previous iteration
+    int state                  = HIGH;      // committed stable state
+    unsigned long lastChangeMs = 0;         // when raw signal last changed
+    DebouncedButton(int p) : pin(p) {}      // C++11 needs explicit ctor here
 };
 
 bool pressed(DebouncedButton &b, unsigned long now) {
     int reading = digitalRead(b.pin);
-    if (reading != b.lastReading) {
-        b.lastChangeMs = now;
+    if (reading != b.lastReading) {                       // raw edge (real or bounce)
+        b.lastChangeMs = now;                             // reset stability timer
         b.lastReading  = reading;
     }
-    if ((now - b.lastChangeMs) > DEBOUNCE_MS && reading != b.state) {
+    if ((now - b.lastChangeMs) > DEBOUNCE_MS              // stable long enough
+        && reading != b.state) {                          // AND state changed
         b.state = reading;
-        return (b.state == LOW);     // fire only on the press edge
+        return (b.state == LOW);                          // fire only on press edge
     }
     return false;
 }
 
 DebouncedButton modeButton(MODE_BUTTON_PIN);
 
-// ─── NVS persistence ────────────────────────────────────────────────────────
+// ─── NVS-backed mode state ──────────────────────────────────────────────────
 Preferences prefs;
 const char* PREF_NAMESPACE      = "bulb";
 const char* PREF_KEY            = "next";
-const unsigned long COMMIT_MS   = 3000;   // stable time before mode locks
+const unsigned long COMMIT_MS   = 3000;    // stable time before mode locks
 
 int  currentMode       = 0;
 bool modeCommitted     = false;
-bool bulbOn            = true;            // boot ON; button toggles OFF/ON
-unsigned long commitStartMs = 0;          // when the current lock countdown began
+bool bulbOn            = true;             // button toggles this; boot = ON
+unsigned long commitStartMs = 0;           // start of current lock countdown
 
-// ─── Mode advance (shared by boot and button) ───────────────────────────────
-// Advance the mode, write "next-mode" to NVS so a power-cycle from here
-// would move to the mode AFTER this one, and restart the 3 s lock timer.
+// Advance mode + write "next mode" to NVS + restart lock timer.
+// Used by boot logic AND button (OFF→ON transition).
 void advanceModeAndPersist() {
     currentMode = (currentMode + 1) % NUM_MODES;
-    int nextMode = (currentMode + 1) % NUM_MODES;
-    prefs.putInt(PREF_KEY, nextMode);
+    prefs.putInt(PREF_KEY, (currentMode + 1) % NUM_MODES);  // "next next" for quick cycle
     modeCommitted = false;
     commitStartMs = millis();
     Serial.printf("→ mode %d (%s)\n", currentMode, modeName[currentMode]);
 }
 
-// ─── Low-level LED helpers ──────────────────────────────────────────────────
-void writeRGB(int r, int g, int b) {                       // set all LEDs by color role
+// ─── LED helpers ────────────────────────────────────────────────────────────
+void writeRGB(int r, int g, int b) {                      // set every LED by color role
     for (int i = 0; i < NUM_LEDS; i++) {
         int val = (leds[i].color == R) ? r
                 : (leds[i].color == G) ? g
@@ -137,49 +100,37 @@ void writeRGB(int r, int g, int b) {                       // set all LEDs by co
     }
 }
 
-void writePosition(int pos, int val) {                     // one specific LED by index
+void writePosition(int pos, int val) {                    // one LED by index
     ledcWrite(leds[pos].channel, val);
 }
 
 // ─── Mode implementations ───────────────────────────────────────────────────
 void runMode(Mode m, unsigned long now) {
     switch (m) {
-        case MODE_WARM_WHITE:
-            writeRGB(255, 150, 40);                        // ~2700 K incandescent
-            break;
+        case MODE_WARM_WHITE:  writeRGB(255, 150,  40); break;   // ~2700 K
+        case MODE_COOL_WHITE:  writeRGB(150, 200, 255); break;   // ~6500 K
+        case MODE_RED:         writeRGB(255,   0,   0); break;
+        case MODE_BLUE:        writeRGB(  0,   0, 255); break;
 
-        case MODE_COOL_WHITE:
-            writeRGB(150, 200, 255);                       // ~6500 K daylight
-            break;
-
-        case MODE_RED:
-            writeRGB(255, 0, 0);
-            break;
-
-        case MODE_BLUE:
-            writeRGB(0, 0, 255);
-            break;
-
-        case MODE_BREATHING: {                             // whole bulb pulses white, 4 s cycle
+        case MODE_BREATHING: {                            // white pulse, 4 s cycle
             float phase = 2.0f * (float)PI * (now % 4000) / 4000.0f;
             int   level = (int)((sinf(phase) + 1.0f) * 0.5f * 255.0f);
             writeRGB(level, level, level);
             break;
         }
 
-        case MODE_RAINBOW_CHASE: {                         // blob of light circles the ring
-            float pos = (now % 1200) / 1200.0f * NUM_LEDS; // 0..NUM_LEDS over 1.2 s
+        case MODE_RAINBOW_CHASE: {                        // blob circles ring in 1.2 s
+            float pos = (now % 1200) / 1200.0f * NUM_LEDS;
             for (int i = 0; i < NUM_LEDS; i++) {
                 float dist = fabsf(i - pos);
-                if (dist > NUM_LEDS / 2.0f) dist = NUM_LEDS - dist;   // wrap around ring
-                float b = fmaxf(0.0f, 1.0f - dist);        // triangular blob, width ≈ 1 LED
+                if (dist > NUM_LEDS / 2.0f) dist = NUM_LEDS - dist;  // ring wrap
+                float b = fmaxf(0.0f, 1.0f - dist);       // triangular blob
                 writePosition(i, (int)(b * 255.0f));
             }
             break;
         }
 
-        default:                                           // safety net
-            writeRGB(0, 0, 0);
+        default: writeRGB(0, 0, 0);
     }
 }
 
@@ -187,31 +138,25 @@ void runMode(Mode m, unsigned long now) {
 void setup() {
     Serial.begin(115200);
 
-    // 1) Configure the 6 PWM channels.
-    for (int i = 0; i < NUM_LEDS; i++) {
+    for (int i = 0; i < NUM_LEDS; i++) {                          // configure 6 PWM channels
         ledcSetup(leds[i].channel, LEDC_FREQ_HZ, LEDC_RESOLUTION);
         ledcAttachPin(leds[i].pin, leds[i].channel);
     }
 
-    // 2) Configure the MODE button — active LOW via internal pull-up.
-    pinMode(MODE_BUTTON_PIN, INPUT_PULLUP);
+    pinMode(MODE_BUTTON_PIN, INPUT_PULLUP);                       // button = active LOW
 
-    // 3) Read the mode NVS says to run this boot.
-    prefs.begin(PREF_NAMESPACE, false);                    // false = read/write
-    currentMode = prefs.getInt(PREF_KEY, 0);               // default 0 on first boot
+    prefs.begin(PREF_NAMESPACE, false);                           // false = read/write
+    currentMode = prefs.getInt(PREF_KEY, 0);                      // mode to run NOW
     if (currentMode < 0 || currentMode >= NUM_MODES) currentMode = 0;
 
-    // 4) Immediately write "next mode" back. If power gets cut RIGHT NOW,
-    //    the next boot runs the mode after this one.
     int nextMode = (currentMode + 1) % NUM_MODES;
-    prefs.putInt(PREF_KEY, nextMode);
+    prefs.putInt(PREF_KEY, nextMode);                             // quick power-cycle → advance
+    commitStartMs = millis();                                     // start lock countdown
 
-    commitStartMs = millis();                              // start the lock countdown
-
-    Serial.printf("Boot: mode %d (%s). Quick power-cycle → mode %d (%s).\n",
+    Serial.printf("Boot: mode %d (%s). Quick cycle → %d (%s).\n",
                   currentMode, modeName[currentMode],
                   nextMode,    modeName[nextMode]);
-    Serial.printf("Press MODE (GPIO %d): ON → OFF → ON+next.  Power-cycle: advance.\n",
+    Serial.printf("Press MODE (GPIO %d): ON↔OFF; OFF→ON advances mode.\n",
                   MODE_BUTTON_PIN);
     Serial.printf("Stay stable %lu ms to lock the current mode.\n", COMMIT_MS);
 }
@@ -219,28 +164,22 @@ void setup() {
 void loop() {
     unsigned long now = millis();
 
-    // Button toggles the on/off state, advancing mode only on OFF→ON.
-    if (pressed(modeButton, now)) {
+    if (pressed(modeButton, now)) {                               // button edge?
         if (bulbOn) {
-            bulbOn = false;                                // ON → OFF, mode unchanged
+            bulbOn = false;                                       // ON → OFF (mode unchanged)
             Serial.println("→ OFF");
         } else {
-            bulbOn = true;                                 // OFF → ON, advance mode
+            bulbOn = true;                                        // OFF → ON + advance mode
             advanceModeAndPersist();
         }
     }
 
-    // Timer elapsed and mode not yet locked → commit it.
-    // Runs regardless of on/off — the "mode" state is independent of "power".
-    if (!modeCommitted && (now - commitStartMs) >= COMMIT_MS) {
+    if (!modeCommitted && (now - commitStartMs) >= COMMIT_MS) {   // stable → lock in NVS
         prefs.putInt(PREF_KEY, currentMode);
         modeCommitted = true;
         Serial.printf("Mode %d (%s) locked.\n", currentMode, modeName[currentMode]);
     }
 
-    if (bulbOn) {
-        runMode((Mode)currentMode, now);
-    } else {
-        writeRGB(0, 0, 0);                                 // OFF: all LEDs dark
-    }
+    if (bulbOn) runMode((Mode)currentMode, now);                  // render current mode
+    else        writeRGB(0, 0, 0);                                // OFF = all dark
 }
