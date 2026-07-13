@@ -1,0 +1,4 @@
+[wokwi]
+version = 1
+firmware = '.pio/build/08_breathing_led/firmware.bin'
+elf = '.pio/build/08_breathing_led/firmware.elf'

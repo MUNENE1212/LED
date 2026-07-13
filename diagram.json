@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "author": "Munene",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 0, "left": -4.76, "attrs": {} },
+
+    { "type": "wokwi-resistor", "id": "r1", "top": 157.55, "left": 124.8, "attrs": { "value": "220" } },
+    { "type": "wokwi-gnd", "id": "gnd1", "top": 268.8, "left": 306.6, "attrs": {} },
+    {
+      "type": "wokwi-led",
+      "id": "led1",
+      "top": 162.4,
+      "left": 313.8,
+      "rotate": 90,
+      "attrs": { "color": "red", "flip": "1" }
+    },
+
+    { "type": "wokwi-rgb-led",  "id": "rgb1",  "top": 400, "left": 350, "attrs": { "common": "cathode" } },
+    { "type": "wokwi-resistor", "id": "r_r",   "top": 350, "left": 150, "attrs": { "value": "220" } },
+    { "type": "wokwi-resistor", "id": "r_g",   "top": 430, "left": 150, "attrs": { "value": "220" } },
+    { "type": "wokwi-resistor", "id": "r_b",   "top": 510, "left": 150, "attrs": { "value": "220" } },
+    { "type": "wokwi-gnd",      "id": "gnd_rgb","top": 570, "left": 400, "attrs": {} }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+
+    [ "esp:2", "r1:1", "green", [ "h28.8" ] ],
+    [ "r1:2", "led1:A", "green", [ "v0" ] ],
+    [ "led1:C", "gnd1:GND", "green", [ "h0", "v76.4" ] ],
+
+    [ "esp:4",  "r_r:1",   "red",   [] ],
+    [ "r_r:2",  "rgb1:R",  "red",   [] ],
+    [ "esp:5",  "r_g:1",   "green", [] ],
+    [ "r_g:2",  "rgb1:G",  "green", [] ],
+    [ "esp:18", "r_b:1",   "blue",  [] ],
+    [ "r_b:2",  "rgb1:B",  "blue",  [] ],
+    [ "rgb1:COMMON", "gnd_rgb:GND", "black", [] ]
+  ],
+  "dependencies": {}
+}
