@@ -1,13 +1,18 @@
 // Exercise 11 — Smart LED Bulb
 //
-// A multi-mode LED bulb with TWO ways to change mode:
+// A multi-mode LED bulb with TWO independent controls:
 //   1) POWER-CYCLE the ESP32 — the "no-app-needed" smart-bulb trick.
 //      Works even with the button disconnected.
-//   2) PRESS the MODE button on GPIO 22 — instant advance from wherever
-//      you are, without cutting power.
+//   2) THE MODE BUTTON on GPIO 22 — behaves like a real bulb switch:
+//        press when ON   → bulb goes OFF (mode NOT advanced)
+//        press when OFF  → bulb goes ON, mode ADVANCES to the next one
+//      So the tap pattern is: mode N ↔ OFF ↔ mode N+1 ↔ OFF ↔ mode N+2 …
+//      You can rest the bulb on any mode (single tap OFF) without losing
+//      your place.
 //
-// Both mechanisms share the same NVS-backed state so they feel identical:
-// press or cycle → next mode; leave it stable for 3 s → mode locks in.
+// Both mechanisms share the same NVS-backed state so power-cycling still
+// advances mode from wherever the button left it. Leave the current mode
+// stable for 3 s and it locks — future power-ons stay put.
 //
 // HOW THE POWER-CYCLE TRICK WORKS
 //   NVS (Non-Volatile Storage) is a small flash region that survives power
@@ -107,6 +112,7 @@ const unsigned long COMMIT_MS   = 3000;   // stable time before mode locks
 
 int  currentMode       = 0;
 bool modeCommitted     = false;
+bool bulbOn            = true;            // boot ON; button toggles OFF/ON
 unsigned long commitStartMs = 0;          // when the current lock countdown began
 
 // ─── Mode advance (shared by boot and button) ───────────────────────────────
@@ -205,24 +211,36 @@ void setup() {
     Serial.printf("Boot: mode %d (%s). Quick power-cycle → mode %d (%s).\n",
                   currentMode, modeName[currentMode],
                   nextMode,    modeName[nextMode]);
-    Serial.printf("Press MODE (GPIO %d) or power-cycle to advance.\n", MODE_BUTTON_PIN);
+    Serial.printf("Press MODE (GPIO %d): ON → OFF → ON+next.  Power-cycle: advance.\n",
+                  MODE_BUTTON_PIN);
     Serial.printf("Stay stable %lu ms to lock the current mode.\n", COMMIT_MS);
 }
 
 void loop() {
     unsigned long now = millis();
 
-    // Button pressed → advance mode instantly + reset lock timer.
+    // Button toggles the on/off state, advancing mode only on OFF→ON.
     if (pressed(modeButton, now)) {
-        advanceModeAndPersist();
+        if (bulbOn) {
+            bulbOn = false;                                // ON → OFF, mode unchanged
+            Serial.println("→ OFF");
+        } else {
+            bulbOn = true;                                 // OFF → ON, advance mode
+            advanceModeAndPersist();
+        }
     }
 
     // Timer elapsed and mode not yet locked → commit it.
+    // Runs regardless of on/off — the "mode" state is independent of "power".
     if (!modeCommitted && (now - commitStartMs) >= COMMIT_MS) {
         prefs.putInt(PREF_KEY, currentMode);
         modeCommitted = true;
         Serial.printf("Mode %d (%s) locked.\n", currentMode, modeName[currentMode]);
     }
 
-    runMode((Mode)currentMode, now);
+    if (bulbOn) {
+        runMode((Mode)currentMode, now);
+    } else {
+        writeRGB(0, 0, 0);                                 // OFF: all LEDs dark
+    }
 }
